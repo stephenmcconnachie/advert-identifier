@@ -11,7 +11,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://unpkg.com/lucide-react@0.454.0/dist/umd/lucide-react.min.js"></script>
   <style>
-    body { margin: 0; }
+    body { margin: 0; overflow-x: hidden; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: var(--scroll-bg, #f1f5f9); }
     ::-webkit-scrollbar-thumb { background: var(--scroll-thumb, #cbd5e1); border-radius: 4px; }
@@ -20,13 +20,12 @@
     @keyframes pulse-dot { 0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.4)} 50%{box-shadow:0 0 0 8px rgba(59,130,246,0)} }
     .pulse { animation: pulse-dot 2s infinite; }
 
-    /* ── Theme: Light (default) ── */
+    /* ── Theme: Light ── */
     .theme-light { --font-body: 'Inter', system-ui, sans-serif; }
     .theme-light { --bg: #f8fafc; --card: #fff; --border: #e5e7eb; --text: #1f2937; --dim: #6b7280; --muted: #9ca3af; }
     .theme-light { --yellow: #f59e0b; --red: #f43f5e; --blue: #6366f1; --purple: #8b5cf6; --green: #10b981; --pink: #ec4899; }
     .theme-light { --ydim: #fffbeb; --rdim: #fff1f2; --bdim: #eef2ff; --pdim: #f5f3ff; --gdim: #ecfdf5; --pkdim: #fdf2f8; }
     .theme-light { --scroll-bg: #f1f5f9; --scroll-thumb: #cbd5e1; }
-    .theme-light .step-card { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 
     /* ── Theme: Gruvbox ── */
     .theme-gruvbox { --font-body: 'Inter', system-ui, sans-serif; }
@@ -34,7 +33,6 @@
     .theme-gruvbox { --yellow: #fabd2f; --red: #fb4934; --blue: #83a598; --purple: #d3869b; --green: #b8bb26; --pink: #d79921; }
     .theme-gruvbox { --ydim: #504945; --rdim: #504945; --bdim: #504945; --pdim: #504945; --gdim: #504945; --pkdim: #504945; }
     .theme-gruvbox { --scroll-bg: #504945; --scroll-thumb: #665c54; }
-    .theme-gruvbox .step-card { background: #3c3836; box-shadow: none; }
 
     /* ── Theme: High-Contrast ── */
     .theme-highcontrast { --font-body: 'Courier New', 'Courier', monospace; }
@@ -42,18 +40,13 @@
     .theme-highcontrast { --yellow: #FFE600; --red: #FF3333; --blue: #3399FF; --purple: #AA66FF; --green: #00FF66; --pink: #FF66B2; }
     .theme-highcontrast { --ydim: #332600; --rdim: #330000; --bdim: #001a33; --pdim: #1a0033; --gdim: #003311; --pkdim: #330022; }
     .theme-highcontrast { --scroll-bg: #111; --scroll-thumb: #333; }
-    .theme-highcontrast .step-card { background: #0a0a0a; box-shadow: none; border: 1px solid #1a1a1a; }
-    .theme-highcontrast .step-card:hover { outline: 1px solid rgba(255,255,255,0.25); }
-    .theme-highcontrast .card-hover:hover { outline: 1px solid rgba(255,255,255,0.25); transform: none; }
+    .theme-highcontrast .step-card { border: 1px solid #1a1a1a; }
+    .theme-highcontrast .card-hover:hover { transform: none; outline: 1px solid rgba(255,255,255,0.25); }
 
-    body { font-family: var(--font-body); background: var(--bg); color: var(--text); }
-    .c-bg { background: var(--bg); }
-    .c-card { background: var(--card); }
-    .c-dim { color: var(--dim); }
-    .c-muted { color: var(--muted); }
+    body { font-family: var(--font-body); background: var(--bg); color: var(--text); margin: 0; }
   </style>
 </head>
-<body>
+<body class="theme-highcontrast">
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect, useRef, createElement: h } = React;
@@ -63,22 +56,13 @@
     const THEME_LABELS = { light:'Light', gruvbox:'Gruvbox', highcontrast:'High-Contrast' };
     const THEME_ICONS  = { light:Sun, gruvbox:Moon, highcontrast:Monitor };
 
-    /* ── Colour values per theme (mirrors CSS vars) ── */
     function useTheme() {
       const [t, setT] = useState('highcontrast');
       useEffect(() => {
-        document.body.className = THEMES.map(tt => `theme-${tt}`).join(' ');
+        THEMES.forEach(tt => document.body.classList.remove(`theme-${tt}`));
         document.body.classList.add(`theme-${t}`);
       }, [t]);
-      const C = {
-        bg:'var(--bg)', card:'var(--card)', border:'var(--border)',
-        text:'var(--text)', dim:'var(--dim)', muted:'var(--muted)',
-        yellow:'var(--yellow)', red:'var(--red)', blue:'var(--blue)',
-        purple:'var(--purple)', green:'var(--green)', pink:'var(--pink)',
-        ydim:'var(--ydim)', rdim:'var(--rdim)', bdim:'var(--bdim)',
-        pdim:'var(--pdim)', gdim:'var(--gdim)', pkdim:'var(--pkdim)',
-      };
-      return { t, setT, C };
+      return { t, setT };
     }
 
     function useInView(ref) {
@@ -98,7 +82,7 @@
       return h('div', { ref, className: `transition-all duration-500 ease-out ${iv ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}` },
         h('div', {
           className: 'step-card rounded-xl p-6',
-          style: { transitionDelay: `${i * 100}ms`, borderLeft: `3px solid ${color||'var(--blue)'}` }
+          style: { background: 'var(--card)', transitionDelay: `${i * 100}ms`, borderLeft: `3px solid ${color||'var(--blue)'}` }
         },
           h('div', { className: 'flex items-center gap-3 mb-4' },
             h('div', { className: 'w-10 h-10 rounded flex items-center justify-center shrink-0', style: { background: color||'var(--blue)' } },
@@ -124,31 +108,25 @@
     }
 
     function ThemeToggle({ t, setT }) {
-      return h('div', { className: 'flex items-center justify-center gap-1 bg-[var(--card)] rounded-xl p-1 mb-6', style:{border:'1px solid var(--border)'} },
+      return h('div', { className: 'flex items-center justify-center gap-1 rounded-xl p-1 mb-6', style:{background:'var(--card)', border:'1px solid var(--border)'} },
         THEMES.map(tt => {
           const Icon = THEME_ICONS[tt];
           const active = t === tt;
           return h('button', {
-            key: tt,
-            onClick: () => setT(tt),
+            key: tt, onClick: () => setT(tt),
             className: 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
             style: active ? { background: 'var(--blue)', color: '#fff' } : { color: 'var(--dim)' }
-          },
-            h(Icon, { className: 'w-3.5 h-3.5' }),
-            THEME_LABELS[tt]
-          );
+          }, h(Icon, { className: 'w-3.5 h-3.5' }), THEME_LABELS[tt]);
         })
       );
     }
 
     function App() {
-      const { t, setT, C } = useTheme();
+      const { t, setT } = useTheme();
       const [mounted, setMounted] = useState(false);
       useEffect(() => { setMounted(true); }, []);
 
-      const s = (name) => `var(--${name})`;
-
-      return h('div', { className: 'min-h-screen p-4 md:p-8 c-bg' },
+      return h('div', { className: 'min-h-screen p-4 md:p-8', style: { background: 'var(--bg)' } },
         h('div', { className: 'max-w-2xl mx-auto' },
 
           /* ── header ── */
@@ -159,8 +137,7 @@
             ),
             h('h1', { className: 'text-2xl md:text-4xl font-bold mb-2', style: { color: 'var(--text)' } }, 'How It Works'),
             h('p', { className: 'text-sm max-w-lg mx-auto', style: { color: 'var(--dim)' } },
-              'AI that watches TV recordings and identifies every individual advert within an ad break \u2014 ',
-              'from scheduling data to frame-accurate clip extraction.'
+              'AI that watches TV recordings and identifies every individual advert within an ad break \u2014 from scheduling data to frame-accurate clip extraction.'
             )
           ),
 
@@ -169,30 +146,32 @@
 
           /* ── big picture ── */
           h('div', { className: `rounded-xl p-5 mb-6 transition-all duration-700 delay-200 ease-out ${mounted?'opacity-100 translate-y-0':'opacity-0 translate-y-4'}`,
-                      style: { background: s('card'), border: `1px solid var(--border)`, borderLeft: `3px solid var(--blue)` } },
-            h('p', { className: 'text-sm font-bold mb-2', style: { color: s('blue') } }, '\u25b6 The Big Picture'),
-            h('p', { className: 'text-sm', style: { color: s('dim') } },
+                      style: { background: 'var(--card)', border: '1px solid var(--border)', borderLeft: '3px solid var(--blue)' } },
+            h('p', { className: 'text-sm font-bold mb-2', style: { color: 'var(--blue)' } }, '\u25b6 The Big Picture'),
+            h('p', { className: 'text-sm', style: { color: 'var(--dim)' } },
               'TV recordings contain ad breaks with multiple adverts back-to-back. This tool already knows ',
-              h('em', { style: { color: s('green') } }, 'what'), ' adverts should be in each break (from scheduling data), ',
-              'uses AI to find ', h('em', { style: { color: s('green') } }, 'where'), ' each one ends in the video, ',
-              'then refines those boundaries to ', h('strong', { style: { color: s('red') } }, 'millisecond precision'), ' ',
+              h('em', { style: { color: 'var(--green)' } }, 'what'), ' adverts should be in each break (from scheduling data), ',
+              'uses AI to find ', h('em', { style: { color: 'var(--green)' } }, 'where'), ' each one ends in the video, ',
+              'then refines those boundaries to ', h('strong', { style: { color: 'var(--red)' } }, 'millisecond precision'), ' ',
               'and extracts each advert as a separate video file.'
             )
           ),
 
           /* ── pipeline glance ── */
           h('div', { className: `rounded-xl p-5 mb-6 transition-all duration-700 delay-300 ease-out ${mounted?'opacity-100 translate-y-0':'opacity-0 translate-y-4'}`,
-                      style: { background: s('card'), border: `1px solid var(--border)` } },
-            h('p', { className: 'text-xs font-bold mb-3', style: { color: s('muted'), textTransform:'uppercase', letterSpacing:'0.05em' } }, 'The Pipeline at a Glance'),
+                      style: { background: 'var(--card)', border: '1px solid var(--border)' } },
+            h('p', { className: 'text-xs font-bold mb-3', style: { color: 'var(--muted)', textTransform:'uppercase', letterSpacing:'0.05em' } }, 'The Pipeline at a Glance'),
             h('div', { className: 'flex flex-wrap items-center justify-center gap-1 md:gap-2' },
               ['CSV & Video', 'Clip', '1 FPS AI', '25 FPS Refine', 'Advert Clips'].map((l, i, a) =>
                 h('div', { key: l, className: 'flex items-center gap-1 md:gap-2' },
                   h('div', { className: 'text-xs font-bold px-2.5 py-1.5 rounded whitespace-nowrap',
-                    style: { background: [s('ydim'),s('rdim'),s('pdim'),s('bdim'),s('gdim')][i],
-                             color: [s('yellow'),s('red'),s('purple'),s('blue'),s('green')][i],
-                             border: `1px solid ${[s('yellow'),s('red'),s('purple'),s('blue'),s('green')][i]}` }
+                    style: {
+                      background: ['var(--ydim)','var(--rdim)','var(--pdim)','var(--bdim)','var(--gdim)'][i],
+                      color: ['var(--yellow)','var(--red)','var(--purple)','var(--blue)','var(--green)'][i],
+                      border: `1px solid ${['var(--yellow)','var(--red)','var(--purple)','var(--blue)','var(--green)'][i]}`
+                    }
                   }, l),
-                  i < a.length-1 && h('span', { className: 'text-xs', style: { color: s('muted') } }, '\u2192')
+                  i < a.length-1 && h('span', { className: 'text-xs', style: { color: 'var(--muted)' } }, '\u2192')
                 )
               )
             )
@@ -200,25 +179,25 @@
 
           /* ── STEP 1 ── */
           Arrow(),
-          h(StepCard, { icon: FileSpreadsheet, title: 'Read the Schedule', i:0, color: s('yellow') },
-            h('p', { className: 'text-sm mb-4', style: { color: s('dim') } },
+          h(StepCard, { icon: FileSpreadsheet, title: 'Read the Schedule', i:0, color: 'var(--yellow)' },
+            h('p', { className: 'text-sm mb-4', style: { color: 'var(--dim)' } },
               'The BFI National Archive obtains scheduling data as CSV files. These contain what was broadcast and approximately when \u2014 including every advert, its brand, duration, and timecode. The tool reads these files and matches them to the video recording.'
             ),
-            h('div', { className: 'rounded-xl p-4', style: { background: s('ydim'), border: `1px solid var(--yellow)` } },
+            h('div', { className: 'rounded-xl p-4', style: { background: 'var(--ydim)', border: '1px solid var(--yellow)' } },
               h('div', { className: 'flex items-center gap-3 mb-3' },
                 h('span', { className: 'text-2xl' }, '\ud83d\udccb'),
                 h('div', null,
-                  h('p', { className: 'text-sm font-bold', style: { color: s('yellow') } }, 'CSV Scheduling Data'),
-                  h('p', { className: 'text-xs', style: { color: s('yellow'), opacity: 0.7 } }, 'e.g. 2024-03-26_BFIExport.csv')
+                  h('p', { className: 'text-sm font-bold', style: { color: 'var(--yellow)' } }, 'CSV Scheduling Data'),
+                  h('p', { className: 'text-xs', style: { color: 'var(--yellow)', opacity: 0.7 } }, 'e.g. 2024-03-26_BFIExport.csv')
                 )
               ),
               h('div', { className: 'rounded-lg p-3 space-y-1', style: { background: 'var(--bg)', border: '1px solid var(--border)' } },
-                h('p', { style: { color: s('dim') } }, '13:52:05 \u2014 ', h('span', { style: { color: s('green') } }, 'Tesco'), ' (10s)'),
-                h('p', { style: { color: s('dim') } }, '13:52:15 \u2014 ', h('span', { style: { color: s('blue') } }, 'Sky Mobile'), ' (30s)'),
-                h('p', { style: { color: s('dim') } }, '13:52:45 \u2014 ', h('span', { style: { color: s('yellow') } }, 'Cadbury'), ' (20s)'),
-                h('p', { style: { color: s('muted') } }, '...and so on')
+                h('p', { style: { color: 'var(--dim)' } }, '13:52:05 \u2014 ', h('span', { style: { color: 'var(--green)' } }, 'Tesco'), ' (10s)'),
+                h('p', { style: { color: 'var(--dim)' } }, '13:52:15 \u2014 ', h('span', { style: { color: 'var(--blue)' } }, 'Sky Mobile'), ' (30s)'),
+                h('p', { style: { color: 'var(--dim)' } }, '13:52:45 \u2014 ', h('span', { style: { color: 'var(--yellow)' } }, 'Cadbury'), ' (20s)'),
+                h('p', { style: { color: 'var(--muted)' } }, '...and so on')
               ),
-              h('p', { className: 'text-xs mt-2', style: { color: s('yellow'), opacity: 0.7 } },
+              h('p', { className: 'text-xs mt-2', style: { color: 'var(--yellow)', opacity: 0.7 } },
                 'The tool also creates a pipeline state file that tracks every advert through all subsequent stages.'
               )
             )
@@ -226,11 +205,11 @@
 
           /* ── STEP 2 ── */
           Arrow(),
-          h(StepCard, { icon: Scissors, title: 'Cut Out the Ad Breaks', i:1, color: s('red') },
-            h('p', { className: 'text-sm mb-4', style: { color: s('dim') } },
+          h(StepCard, { icon: Scissors, title: 'Cut Out the Ad Breaks', i:1, color: 'var(--red)' },
+            h('p', { className: 'text-sm mb-4', style: { color: 'var(--dim)' } },
               'Rather than processing an entire hours-long recording, the tool cuts out just the ad break sections using FFmpeg. It knows from the schedule roughly when each ad break starts, so it extracts a short clip with configurable buffer \u2014 typically 60 seconds before and 360 seconds after.'
             ),
-            h('div', { className: 'rounded-xl p-4', style: { background: s('rdim'), border: `1px solid var(--red)` } },
+            h('div', { className: 'rounded-xl p-4', style: { background: 'var(--rdim)', border: '1px solid var(--red)' } },
               h('div', { className: 'flex items-end gap-0.5 mb-3' },
                 [...Array(20)].map((_, i) => {
                   const is = i >= 6 && i <= 13;
@@ -240,19 +219,19 @@
                 })
               ),
               h('div', { className: 'flex items-center gap-2 text-xs' },
-                h('div', { className: 'flex items-center gap-1' }, h('div', { className: 'w-3 h-3 rounded-sm', style: { background: 'var(--muted)' } }), h('span', { style: { color: s('dim') } }, 'Programme')),
-                h('div', { className: 'flex items-center gap-1' }, h('div', { className: 'w-3 h-3 rounded-sm', style: { background: 'var(--red)' } }), h('span', { style: { color: s('red') } }, 'Ad break'))
+                h('div', { className: 'flex items-center gap-1' }, h('div', { className: 'w-3 h-3 rounded-sm', style: { background: 'var(--muted)' } }), h('span', { style: { color: 'var(--dim)' } }, 'Programme')),
+                h('div', { className: 'flex items-center gap-1' }, h('div', { className: 'w-3 h-3 rounded-sm', style: { background: 'var(--red)' } }), h('span', { style: { color: 'var(--red)' } }, 'Ad break'))
               )
             )
           ),
 
           /* ── STEP 3 ── */
           Arrow(),
-          h(StepCard, { icon: Eye, title: 'AI "Watches" at 1 FPS', i:2, color: s('purple') },
-            h('p', { className: 'text-sm mb-4', style: { color: s('dim') } },
-              'The AI watches each ad break clip at 1 frame per second and identifies the last frame of every expected advert. It already knows from the schedule what brands and durations to look for \u2014 its job is to confirm when each one ends by spotting logos or brand names in the final seconds.'
+          h(StepCard, { icon: Eye, title: 'AI "Watches" at 1 FPS', i:2, color: 'var(--purple)' },
+            h('p', { className: 'text-sm mb-4', style: { color: 'var(--dim)' } },
+              'The AI watches each ad break clip at 1 frame per second and identifies the last frame of every expected advert.'
             ),
-            h('div', { className: 'rounded-xl p-4', style: { background: s('pdim'), border: `1px solid var(--purple)` } },
+            h('div', { className: 'rounded-xl p-4', style: { background: 'var(--pdim)', border: '1px solid var(--purple)' } },
               h('div', { className: 'space-y-2 mb-3' },
                 [{ brand:'Tesco', time:'13:52:15' }, { brand:'Sky Mobile', time:'13:52:45' }, { brand:'Cadbury', time:'13:53:05' }]
                   .map((ad, i) =>
@@ -268,9 +247,9 @@
               ),
               h('div', { className: 'flex items-center gap-2 rounded-lg p-3', style: { background: 'var(--bg)', border: '1px solid var(--border)' } },
                 h(Users, { className: 'w-4 h-4 shrink-0', style: { color: 'var(--green)' } }),
-                h('p', { className: 'text-xs', style: { color: s('dim') } },
-                  h('strong', { style: { color: s('green') } }, 'Ensemble voting: '),
-                  'The AI watches ', h('strong', { style: { color: s('yellow') } }, '5 times'), ' independently and picks the median result, filtering out any wild outliers.'
+                h('p', { className: 'text-xs', style: { color: 'var(--dim)' } },
+                  h('strong', { style: { color: 'var(--green)' } }, 'Ensemble voting: '),
+                  'The AI watches ', h('strong', { style: { color: 'var(--yellow)' } }, '5 times'), ' independently and picks the median result.'
                 )
               )
             )
@@ -278,79 +257,74 @@
 
           /* ── STEP 4 ── */
           Arrow(),
-          h(StepCard, { icon: Search, title: 'Millisecond Precision (25 FPS)', i:3, tag:'NEW', color: s('blue') },
-            h('p', { className: 'text-sm mb-4', style: { color: s('dim') } },
-              'The 1 FPS detection gets you within one second \u2014 but broadcast video runs at 25 frames per second. The refinement stage zooms in: for each advert, it extracts a 3-second clip centred on the expected end time, then analyses it at full 25 FPS to find the precise millisecond when the brand logo disappears.'
+          h(StepCard, { icon: Search, title: 'Millisecond Precision (25 FPS)', i:3, tag:'NEW', color: 'var(--blue)' },
+            h('p', { className: 'text-sm mb-4', style: { color: 'var(--dim)' } },
+              'The 1 FPS detection gets you within one second \u2014 but broadcast video runs at 25 frames per second. The refinement stage zooms in: for each advert, it extracts a 3-second clip centred on the expected end time, then analyses it at full 25 FPS.'
             ),
             h('div', { className: 'grid grid-cols-2 gap-3 mb-3' },
-              h('div', { className: 'rounded-xl p-3', style: { background: s('bdim'), border: `1px solid var(--blue)` } },
-                h('p', { className: 'text-xs font-bold mb-1', style: { color: s('blue') } }, '\ud83c\udfaf How It Works'),
-                h('ul', { className: 'text-xs space-y-1 ml-3 list-disc', style: { color: s('dim') } },
+              h('div', { className: 'rounded-xl p-3', style: { background: 'var(--bdim)', border: '1px solid var(--blue)' } },
+                h('p', { className: 'text-xs font-bold mb-1', style: { color: 'var(--blue)' } }, '\ud83c\udfaf How It Works'),
+                h('ul', { className: 'text-xs space-y-1 ml-3 list-disc', style: { color: 'var(--dim)' } },
                   h('li', null, '3-second clip per advert'),
                   h('li', null, 'Analysed at 25 FPS (75 frames)'),
-                  h('li', null, '3 ensemble calls for accuracy'),
-                  h('li', null, 'Median voting per frame')
-                )
+                  h('li', null, '3 ensemble calls for accuracy'))
               ),
-              h('div', { className: 'rounded-xl p-3', style: { background: s('bdim'), border: `1px solid var(--blue)` } },
-                h('p', { className: 'text-xs font-bold mb-1', style: { color: s('blue') } }, '\u26a1 Configurable FPS'),
-                h('ul', { className: 'text-xs space-y-1 ml-3 list-disc', style: { color: s('dim') } },
+              h('div', { className: 'rounded-xl p-3', style: { background: 'var(--bdim)', border: '1px solid var(--blue)' } },
+                h('p', { className: 'text-xs font-bold mb-1', style: { color: 'var(--blue)' } }, '\u26a1 Configurable FPS'),
+                h('ul', { className: 'text-xs space-y-1 ml-3 list-disc', style: { color: 'var(--dim)' } },
                   h('li', null, '25 FPS default (PAL)'),
                   h('li', null, '24 FPS for NTSC sources'),
-                  h('li', null, 'MAD outlier filter available'),
-                  h('li', null, 'HH:MM:SS.mmm output')
-                )
+                  h('li', null, 'HH:MM:SS.mmm output'))
               )
             ),
             h('div', { className: 'rounded-xl p-3 space-y-1', style: { background: 'var(--bg)', border: '1px solid var(--border)' } },
-              h('p', { className: 'text-xs', style: { color: s('muted') } },
-                'Coarse (1 FPS):  ', h('span', { className: 'font-bold', style: { color: s('yellow') } }, '13:52:15')
+              h('p', { className: 'text-xs', style: { color: 'var(--muted)' } },
+                'Coarse (1 FPS):  ', h('span', { className: 'font-bold', style: { color: 'var(--yellow)' } }, '13:52:15')
               ),
-              h('p', { className: 'text-xs', style: { color: s('muted') } },
-                'Refined (25 FPS): ', h('span', { className: 'font-bold', style: { color: s('green') } }, '13:52:15.080')
+              h('p', { className: 'text-xs', style: { color: 'var(--muted)' } },
+                'Refined (25 FPS): ', h('span', { className: 'font-bold', style: { color: 'var(--green)' } }, '13:52:15.080')
               ),
-              h('p', { className: 'text-xs mt-1', style: { color: s('muted') } }, '\u2191 Frame-accurate to \u00b140ms')
+              h('p', { className: 'text-xs mt-1', style: { color: 'var(--muted)' } }, '\u2191 Frame-accurate to \u00b140ms')
             )
           ),
 
           /* ── STEP 5 ── */
           Arrow(),
-          h(StepCard, { icon: Film, title: 'Extract Individual Adverts', i:4, tag:'NEW', color: s('green') },
-            h('p', { className: 'text-sm mb-4', style: { color: s('dim') } },
-              'Using the refined frame-accurate timecodes, the tool extracts each advert as its own lossless H.264 video clip. Every clip is named with the advert\'s brand, category, and unique ID \u2014 ready for cataloguing, review, or access.'
+          h(StepCard, { icon: Film, title: 'Extract Individual Adverts', i:4, tag:'NEW', color: 'var(--green)' },
+            h('p', { className: 'text-sm mb-4', style: { color: 'var(--dim)' } },
+              'Using the refined frame-accurate timecodes, the tool extracts each advert as its own lossless H.264 video clip.'
             ),
-            h('div', { className: 'rounded-xl p-4', style: { background: s('gdim'), border: `1px solid var(--green)` } },
-              h('p', { className: 'text-xs font-bold mb-2', style: { color: s('green') } }, 'Sample Output'),
+            h('div', { className: 'rounded-xl p-4', style: { background: 'var(--gdim)', border: '1px solid var(--green)' } },
+              h('p', { className: 'text-xs font-bold mb-2', style: { color: 'var(--green)' } }, 'Sample Output'),
               h('div', { className: 'rounded-lg p-3 space-y-1', style: { background: 'var(--bg)', border: '1px solid var(--border)' } },
-                h('p', { className: 'text-xs', style: { color: s('dim') } }, 'clips/', h('span', { className:'font-bold', style:{color:s('green')} }, 'BBHTCPT536010'), '_retail_Tesco.mp4'),
-                h('p', { className: 'text-xs', style: { color: s('dim') } }, 'clips/', h('span', { className:'font-bold', style:{color:s('green')} }, 'SKYMO2394030'), '_telecoms_Sky Mobile.mp4'),
-                h('p', { className: 'text-xs', style: { color: s('dim') } }, 'clips/', h('span', { className:'font-bold', style:{color:s('green')} }, 'CADBURY2030'), '_food_Cadbury.mp4')
+                h('p', { className: 'text-xs', style: { color: 'var(--dim)' } }, 'clips/', h('span', { className:'font-bold', style:{color:'var(--green)'} }, 'BBHTCPT536010'), '_retail_Tesco.mp4'),
+                h('p', { className: 'text-xs', style: { color: 'var(--dim)' } }, 'clips/', h('span', { className:'font-bold', style:{color:'var(--green)'} }, 'SKYMO2394030'), '_telecoms_Sky Mobile.mp4'),
+                h('p', { className: 'text-xs', style: { color: 'var(--dim)' } }, 'clips/', h('span', { className:'font-bold', style:{color:'var(--green)'} }, 'CADBURY2030'), '_food_Cadbury.mp4')
               ),
-              h('div', { className: 'flex items-center gap-2 mt-2 text-xs', style: { color: s('green') } },
-                h(Zap, { className: 'w-3 h-3' }),
-                h('span', null, 'Lossless extraction \u2014 no re-encoding, no quality loss')
+              h('div', { className: 'flex items-center gap-2 mt-2 text-xs', style: { color: 'var(--green)' } },
+                h(Zap, { className: 'w-3 h-3' }), h('span', null, 'Lossless extraction \u2014 no re-encoding')
               )
             )
           ),
 
           /* ── pipeline state ── */
           Arrow(),
-          h(StepCard, { icon: GitMerge, title: 'Tracking Every Advert Through the Pipeline', i:5, tag:'LATEST', color: s('pink') },
-            h('p', { className: 'text-sm mb-4', style: { color: s('dim') } },
-              'A single "pipeline state file" follows each advert through every stage. It starts empty at Step 1, gets updated at each stage \u2014 from "metadata extracted" through "identified" to "refined" \u2014 and finally contains the complete frame-accurate broadcast timecodes needed for clip extraction.'
+          h(StepCard, { icon: GitMerge, title: 'Tracking Every Advert Through the Pipeline', i:5, tag:'LATEST', color: 'var(--pink)' },
+            h('p', { className: 'text-sm mb-4', style: { color: 'var(--dim)' } },
+              'A single "pipeline state file" follows each advert through every stage \u2014 from "metadata extracted" through "identified" to "refined".'
             ),
-            h('div', { className: 'rounded-xl p-4', style: { background: s('pkdim'), border: `1px solid var(--pink)` } },
+            h('div', { className: 'rounded-xl p-4', style: { background: 'var(--pkdim)', border: '1px solid var(--pink)' } },
               h('div', { className: 'flex flex-wrap items-center justify-center gap-2 text-xs' },
                 ['Extracted','Clipped','Identified','Refined','Clipped'].map((s, i, a) =>
                   h('div', { key:s, className:'flex items-center gap-2' },
                     h('span', { className:'px-2.5 py-1 rounded-full font-bold whitespace-nowrap',
-                      style: { background: s('pkdim'), color: s('pink'), border: `1px solid var(--pink)` }
+                      style: { background: 'var(--pkdim)', color: 'var(--pink)', border: '1px solid var(--pink)' }
                     }, '\u2713 ', s),
-                    i < a.length-1 && h('span', { className:'text-xs', style:{color:s('muted')} }, '\u2192')
+                    i < a.length-1 && h('span', { className:'text-xs', style:{color:'var(--muted)'} }, '\u2192')
                   )
                 )
               ),
-              h('p', { className: 'text-xs mt-2 text-center', style: { color: s('pink') } },
+              h('p', { className: 'text-xs mt-2 text-center', style: { color: 'var(--pink)' } },
                 'The state file bridges clip-relative timecodes to broadcast-absolute offsets.'
               )
             )
@@ -358,15 +332,15 @@
 
           /* ── full automation ── */
           h('div', { className: `rounded-xl p-5 mt-6 transition-all duration-700 delay-500 ease-out ${mounted?'opacity-100 translate-y-0':'opacity-0 translate-y-8'}`,
-                      style: { background: 'var(--bdim)', border: `1px solid var(--blue)`, borderLeft: `3px solid var(--blue)` } },
+                      style: { background: 'var(--bdim)', border: '1px solid var(--blue)', borderLeft: '3px solid var(--blue)' } },
             h('div', { className: 'flex items-center gap-2 mb-2' },
-              h(FolderOpen, { className: 'w-5 h-5', style: { color: s('blue') } }),
-              h('p', { className: 'font-bold text-sm', style: { color: s('blue') } }, 'Full Automation Available')
+              h(FolderOpen, { className: 'w-5 h-5', style: { color: 'var(--blue)' } }),
+              h('p', { className: 'font-bold text-sm', style: { color: 'var(--blue)' } }, 'Full Automation Available')
             ),
-            h('p', { className: 'text-sm mb-3', style: { color: s('dim') } },
-              'Point the tool at an entire folder of recordings and it will process them all automatically \u2014 extracting metadata, cutting clips, running 1 FPS and 25 FPS analysis, and extracting every advert clip. One command does everything.'
+            h('p', { className: 'text-sm mb-3', style: { color: 'var(--dim)' } },
+              'Point the tool at an entire folder of recordings and it will process them all automatically \u2014 one command does everything.'
             ),
-            h('div', { className: 'rounded-xl p-3 text-xs', style: { background: 'var(--bg)', border: '1px solid var(--border)', color: s('blue') } },
+            h('div', { className: 'rounded-xl p-3 text-xs', style: { background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--blue)' } },
               'advert-identifier-pipeline \\', h('br'),
               '  --input-folder /path/to/videos \\', h('br'),
               '  --csv-folder /path/to/csv/files'
@@ -375,11 +349,11 @@
 
           /* ── footer ── */
           h('div', { className: `text-center mt-8 mb-4 transition-all duration-700 delay-700 ease-out ${mounted?'opacity-100':'opacity-0'}` },
-            h('p', { className: 'text-xs', style: { color: s('muted') } },
-              'Powered by Qwen3.5 Vision-Language Model \u00b7 FFmpeg \u00b7 vLLM \u00b7 Built at the BFI National Archive'
+            h('p', { className: 'text-xs', style: { color: 'var(--muted)' } },
+              'Powered by Qwen3.5 Vision-Language Model \u00b7 FFmpeg \u00b7 vLLM \u00b7 BFI National Archive'
             ),
-            h('p', { className: 'text-xs mt-1', style: { color: s('muted'), opacity: 0.5 } },
-              'v2 \u2014 Updated for full pipeline: 1 FPS detection \u2192 25 FPS refinement \u2192 individual advert clips'
+            h('p', { className: 'text-xs mt-1', style: { opacity: 0.5, color: 'var(--muted)' } },
+              'v2 \u2014 Full pipeline: 1 FPS \u2192 25 FPS refinement \u2192 individual advert clips'
             )
           )
         )

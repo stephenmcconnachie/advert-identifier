@@ -44,7 +44,7 @@
     body { font-family: var(--font-body); background: var(--bg); color: var(--text); margin:0; }
   </style>
 </head>
-<body>
+<body class="theme-highcontrast">
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useRef, useEffect, createElement: h } = React;
@@ -62,7 +62,7 @@
     function useTheme() {
       const [t, setT] = useState('highcontrast');
       useEffect(() => {
-        document.body.className = THEMES.map(tt => `theme-${tt}`).join(' ');
+        THEMES.forEach(tt => document.body.classList.remove(`theme-${tt}`));
         document.body.classList.add(`theme-${t}`);
       }, [t]);
       return { t, setT };
