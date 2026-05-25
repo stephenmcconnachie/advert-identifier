@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ad Break Identifier — Technical Architecture</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script>window.react = window.React;</script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide-react@0.454.0/dist/umd/lucide-react.min.js"></script>
+  <style>
+    body {
+      font-family: 'Courier New', 'Courier', monospace;
+      background: #000;
+      color: #fff;
+    }
+    .mono { font-family: 'Courier New', 'Courier', monospace; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #111; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    .tab-btn { transition: all 0.15s ease; }
+    .card-hover { transition: all 0.2s ease; }
+    .card-hover:hover { outline: 1px solid rgba(255,255,255,0.2); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-in { animation: fadeIn 0.3s ease forwards; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useEffect, createElement: h } = React;
+    const {
+      Cpu, Layers, Terminal, FileSpreadsheet, Scissors, Eye,
+      Search, ArrowRight, ArrowDown, CheckCircle, FolderOpen,
+      Cog, GitMerge, Clock, Tv, Database, Filter, Play,
+      Sliders, Shield, Settings, Workflow, FileOutput
+    } = LucideReact;
+
+    /* ── colour palette ── */
+    const C = {
+      bg: '#000',
+      card: '#0a0a0a',
+      bdr: '#1a1a1a',
+      text: '#fff',
+      dim:  '#777',
+      muted:'#444',
+      yellow:'#FFE600',   ydim:'#332600',
+      red:   '#FF3333',   rdim:'#330000',
+      blue:  '#3399FF',   bdim:'#001a33',
+      purple:'#AA66FF',   pdim:'#1a0033',
+      green: '#00FF66',   gdim:'#003311',
+      pink:  '#FF66B2',   pkdim:'#330022',
+    };
+    const clr = c => ({ color: c });
+    const bg  = c => ({ background: c });
+
+    const TABS = [
+      { id:'overview',  label:'Pipeline',        icon:Layers },
+      { id:'metadata',  label:'Stage 1: Metadata',  icon:FileSpreadsheet },
+      { id:'clip',      label:'Stage 2: Clip Extr.', icon:Scissors },
+      { id:'detect',    label:'Stage 3: AI Detect', icon:Eye },
+      { id:'refine',    label:'Stage 4: Refinement', icon:Search },
+      { id:'extract',   label:'Stage 5: Ad Clips',  icon:FileOutput },
+      { id:'automation',label:'Automation',        icon:FolderOpen },
+    ];
+
+    function SectionHeader({ icon:Icon, title, color }) {
+      return h('div', { className:'flex items-center gap-2 mb-3 pb-2', style:{borderBottom:`1px solid ${color||C.bdr}`} },
+        h(Icon, { className:'w-4 h-4', style:clr(color||C.dim) }),
+        h('h3', { className:'font-bold text-sm', style:clr(color||C.dim) }, title)
+      );
+    }
+
+    function PipelineNode({ label, sublabel, color, icon:Icon, border }) {
+      return h('div', { className:'rounded-lg p-2 text-center min-w-max', style:{ background:color||C.card, border: border||'none' } },
+        Icon && h(Icon, { className:'w-3.5 h-3.5 mx-auto mb-0.5', style:clr('#ccc') }),
+        h('p', { className:'text-xs font-bold', style:clr('#ccc') }, label),
+        sublabel && h('p', { className:'text-xs opacity-70 leading-tight', style:clr(C.dim) }, sublabel)
+      );
+    }
+
+    function PipeArrow({ label }) {
+      return h('div', { className:'flex flex-col items-center justify-center px-0.5 shrink-0' },
+        h(ArrowRight, { className:'w-3.5 h-3.5', style:clr(C.muted) }),
+        label && h('span', { className:'text-xs', style:clr(C.muted) }, label)
+      );
+    }
+
+    function DownArrow({ label }) {
+      return h('div', { className:'flex flex-col items-center py-1' },
+        h(ArrowDown, { className:'w-4 h-4', style:clr(C.muted) }),
+        label && h('span', { className:'text-xs', style:clr(C.muted) }, label)
+      );
+    }
+
+    function ParamRow({ name, value, note }) {
+      return h('div', { className:'flex items-baseline gap-2 py-1.5', style:{borderBottom:'1px solid '+C.bdr} },
+        h('code', { className:'mono text-xs px-1.5 py-0.5 rounded shrink-0', style:{background:C.card, color:C.dim} }, name),
+        h('span', { className:'text-xs font-semibold', style:clr(C.text) }, value),
+        note && h('span', { className:'text-xs ml-auto', style:clr(C.muted) }, note)
+      );
+    }
+
+    function CodeBlock({ children, language }) {
+      return h('pre', { className:'rounded-lg p-3 overflow-x-auto', style:{
+        background:C.bg, border:'1px solid '+C.bdr,
+        color: language==='json' ? C.dim : C.green,
+        fontSize:'0.75rem'
+      } }, children);
+    }
+
+    function Tag({ children, color }) {
+      const map = { new:'#00FF66', update:'#FFE600', stable:'#777' };
+      const dim = { new:'#003311', update:'#332600', stable:'#222' };
+      const c = map[color]||map.new;
+      const d = dim[color]||dim.new;
+      return h('span', { className:'text-xs font-bold px-1.5 py-0.5 rounded', style:{background:d, color:c, border:`1px solid ${c}44`} }, children);
+    }
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('overview');
+
+      const renderTab = (tabId) => {
+        const ani = { className: 'animate-in' };
+
+        switch(tabId) {
+
+          /* ══════════════ OVERVIEW ══════════════ */
+          case 'overview': return h('div', { key:'overview', ...ani },
+            h('div', { className:'rounded-2xl p-5 mb-4', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:Layers, title:'End-to-End Pipeline', color:C.blue }),
+              h('p', { className:'text-xs mb-4', style:clr(C.dim) },
+                'Five discrete stages, each with its own CLI command. Stages produce artifacts consumed by the next. ',
+                h(Tag, { color:'new' }, 'NEW'), ' Stages 4 and 5 added since initial release.'
+              ),
+
+              /* 5-Stage Pipeline Flow */
+              h('div', { className:'space-y-2' },
+                /* Stage 1 */
+                h('div', { className:'rounded-xl p-3 card-hover', style:{background:C.card, border:`1px solid ${C.yellow}44`} },
+                  h('div', { className:'flex items-center gap-2 mb-2' },
+                    h('span', { className:'text-xs font-bold px-2 py-0.5 rounded', style:{background:C.yellow, color:'#000'} }, '1'),
+                    h('p', { className:'text-xs font-bold', style:clr(C.yellow) }, 'Metadata Extraction'),
+                    h('code', { className:'mono text-xs ml-auto', style:clr(C.yellow) }, 'advert-identifier-metadata-extract')
+                  ),
+                  h('div', { className:'flex items-center gap-1 overflow-x-auto text-xs' },
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'Video filename'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'CSV lookup'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'Filter & group'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded font-bold', style:{background:C.ydim, color:C.yellow, border:`1px solid ${C.yellow}44`} }, '_metadata.json'),
+                    h('span', { className:'px-1 text-xs', style:clr(C.muted) }, '+'),
+                    h('span', { className:'px-2 py-1 rounded font-bold', style:{background:C.bdim, color:C.blue, border:`1px solid ${C.blue}44`} }, '_pipeline_state.json')
+                  )
+                ),
+                h(DownArrow, { label:'JSON metadata + state file' }),
+
+                /* Stage 2 */
+                h('div', { className:'rounded-xl p-3 card-hover', style:{background:C.card, border:`1px solid ${C.red}44`} },
+                  h('div', { className:'flex items-center gap-2 mb-2' },
+                    h('span', { className:'text-xs font-bold px-2 py-0.5 rounded', style:{background:C.red, color:'#000'} }, '2'),
+                    h('p', { className:'text-xs font-bold', style:clr(C.red) }, 'Clip Extraction'),
+                    h('code', { className:'mono text-xs ml-auto', style:clr(C.red) }, 'advert-identifier-clip')
+                  ),
+                  h('div', { className:'flex items-center gap-1 overflow-x-auto text-xs' },
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, '_metadata.json'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'FFmpeg seek'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, '-60s / +360s window'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded font-bold', style:{background:C.rdim, color:C.red, border:`1px solid ${C.red}44`} }, '_CLIP.mp4 per break')
+                  )
+                ),
+                h(DownArrow, { label:'video clips' }),
+
+                /* Stage 3 */
+                h('div', { className:'rounded-xl p-3 card-hover', style:{background:C.card, border:`1px solid ${C.purple}44`} },
+                  h('div', { className:'flex items-center gap-2 mb-2' },
+                    h('span', { className:'text-xs font-bold px-2 py-0.5 rounded', style:{background:C.purple, color:'#000'} }, '3'),
+                    h('p', { className:'text-xs font-bold', style:clr(C.purple) }, 'AI Identification', h('span', { className:'ml-1.5 font-normal', style:clr(C.muted) }, '(1 FPS)')),
+                    h('code', { className:'mono text-xs ml-auto', style:clr(C.purple) }, 'advert-identifier')
+                  ),
+                  h('div', { className:'flex items-center gap-1 overflow-x-auto text-xs' },
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'Clip + metadata'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'VLM analysis'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'Ensemble (5\u00d7) + vote'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded font-bold', style:{background:C.pdim, color:C.purple, border:`1px solid ${C.purple}44`} }, '_CLIP.xml + state update')
+                  )
+                ),
+                h(DownArrow, { label:'XML results + coarse_1fps state' }),
+
+                /* Stage 4 - NEW */
+                h('div', { className:'rounded-xl p-3 card-hover', style:{background:C.card, border:`1px solid ${C.green}44`, outline:`1px solid ${C.green}22`} },
+                  h('div', { className:'flex items-center gap-2 mb-2' },
+                    h('span', { className:'text-xs font-bold px-2 py-0.5 rounded', style:{background:C.green, color:'#000'} }, '4'),
+                    h('p', { className:'text-xs font-bold', style:clr(C.green) }, 'Frame Refinement', h('span', { className:'ml-1.5 font-normal', style:clr(C.muted) }, '(25 FPS)')),
+                    h(Tag, { color:'new' }, 'NEW'),
+                    h('code', { className:'mono text-xs ml-auto', style:clr(C.green) }, 'advert-identifier-refine')
+                  ),
+                  h('div', { className:'flex items-center gap-1 overflow-x-auto text-xs' },
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'XML + clip URL'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, '3s clip @ 25 FPS'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'Ensemble (3\u00d7) + MAD filter'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded font-bold', style:{background:C.gdim, color:C.green, border:`1px solid ${C.green}44`} }, '_refined.xml + state update')
+                  )
+                ),
+                h(DownArrow, { label:'Refined XML + adjusted_start_broadcast' }),
+
+                /* Stage 5 - NEW */
+                h('div', { className:'rounded-xl p-3 card-hover', style:{background:C.card, border:`1px solid ${C.pink}44`, outline:`1px solid ${C.pink}22`} },
+                  h('div', { className:'flex items-center gap-2 mb-2' },
+                    h('span', { className:'text-xs font-bold px-2 py-0.5 rounded', style:{background:C.pink, color:'#000'} }, '5'),
+                    h('p', { className:'text-xs font-bold', style:clr(C.pink) }, 'Advert Clip Extraction'),
+                    h(Tag, { color:'new' }, 'NEW'),
+                    h('code', { className:'mono text-xs ml-auto', style:clr(C.pink) }, 'advert-identifier-single-advert-clip')
+                  ),
+                  h('div', { className:'flex items-center gap-1 overflow-x-auto text-xs' },
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'Refined XML'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'State file seek offset'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, 'FFmpeg lossless cut'),
+                    h(PipeArrow),
+                    h('span', { className:'px-2 py-1 rounded font-bold', style:{background:C.pkdim, color:C.pink, border:`1px solid ${C.pink}44`} }, 'Individual .mp4 per advert')
+                  )
+                )
+              ),
+
+              /* File naming */
+              h('div', { className:'mt-4 rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'File Naming Convention'),
+                h('div', { className:'space-y-1 mono text-xs' },
+                  h('div', { className:'flex items-baseline gap-2' }, h('span', { style:clr(C.muted) }, 'Video:'), h('span', { style:clr(C.blue) }, 'YYYY-MM-DD_CHANNEL_HH:MM:SS.mp4')),
+                  h('div', { className:'flex items-baseline gap-2' }, h('span', { style:clr(C.muted) }, 'CSV:'),   h('span', { style:clr(C.yellow) }, 'YYYY-MM-DD_BFIExport.csv')),
+                  h('div', { className:'flex items-baseline gap-2' }, h('span', { style:clr(C.muted) }, 'State:'),  h('span', { style:clr(C.blue) }, '{video}_pipeline_state.json')),
+                  h('div', { className:'flex items-baseline gap-2' }, h('span', { style:clr(C.muted) }, 'Clip:'),   h('span', { style:clr(C.red) }, '{video}_{index}of{total}_CLIP.mp4')),
+                  h('div', { className:'flex items-baseline gap-2' }, h('span', { style:clr(C.muted) }, 'Advert:'),  h('span', { style:clr(C.green) }, '{unique_id}_{category}_{brand}.mp4'))
+                )
+              )
+            ),
+
+            /* CLI commands */
+            h('div', { className:'rounded-2xl p-5', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:Terminal, title:'CLI Commands', color:C.muted }),
+              h('div', { className:'space-y-2' },
+                h(CommandCard, { name:'advert-identifier', desc:'Core 1 FPS detection with ensemble voting', args:['--mode timecode|frame','--ad-break-index N','--no-ensemble','--no-thinking','--verbose','--debug','--model NAME'], color:C.purple }),
+                h(CommandCard, { name:'advert-identifier-refine', desc:'25 FPS frame-accurate boundary refinement', args:['--xml-file','--video-url','--json-file','--refine-fps 25','--ensemble-filter mad','--no-thinking'], color:C.green, tag:'NEW' }),
+                h(CommandCard, { name:'advert-identifier-pipeline', desc:'Full automation: processes entire folders end-to-end', args:['--input-folder','--csv-folder','--video-server-url','--dry-run','--log-level'], color:C.blue }),
+                h(CommandCard, { name:'advert-identifier-metadata-extract', desc:'Parses video filenames \u2192 matches CSV \u2192 produces metadata + state JSON', args:['--video','--csv-folder','--output-dir','--before-secs'], color:C.yellow }),
+                h(CommandCard, { name:'advert-identifier-clip', desc:'FFmpeg clip extraction centered on ad break timestamps', args:['--json-file','--before-secs 60','--after-secs 360','--overlay-type'], color:C.red }),
+                h(CommandCard, { name:'advert-identifier-single-advert-clip', desc:'Lossless individual advert clip extraction', args:['--xml-file','--video-url','--state-file','--output-dir','--trim','--pad'], color:C.pink, tag:'NEW' }),
+                h(CommandCard, { name:'advert-identifier-benchmark', desc:'Accuracy testing against ground truth', args:['--ground-truth-first','-n 10'], color:C.muted }),
+              )
+            )
+          );
+
+          /* ══════════════ METADATA ══════════════ */
+          case 'metadata': return h('div', { key:'metadata', ...ani },
+            h('div', { className:'rounded-2xl p-5', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:FileSpreadsheet, title:'Stage 1 \u2014 Metadata Extraction', color:C.yellow }),
+              h('p', { className:'text-xs mb-4', style:clr(C.dim) },
+                'Parses the video filename to extract date and channel, locates the corresponding CSV scheduling file, and filters it to the relevant broadcast window. Outputs structured JSON with ad break timestamps plus a ',
+                h('code', { className:'mono px-1 rounded text-xs', style:{background:C.card, color:C.dim} }, '_pipeline_state.json'),
+                ' for advert tracking across all stages.'
+              ),
+              h('div', { className:'rounded-xl p-4 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.yellow) }, 'Processing Flow'),
+                h('div', { className:'flex items-center gap-1 overflow-x-auto pb-1' },
+                  h(PipelineNode, { label:'Video filename', sublabel:'date + channel + time', color:C.card, icon:Tv }),
+                  h(PipeArrow),
+                  h(PipelineNode, { label:'Locate CSV', sublabel:'YYYY-MM-DD_BFIExport.csv', color:C.card, icon:Search }),
+                  h(PipeArrow),
+                  h(PipelineNode, { label:'Filter by channel', sublabel:'+ time window', color:C.ydim, border:`1px solid ${C.yellow}44`, icon:Filter }),
+                  h(PipeArrow),
+                  h(PipelineNode, { label:'Group ad breaks', sublabel:'consecutive ads', color:C.ydim, icon:Database }),
+                  h(PipeArrow),
+                  h(PipelineNode, { label:'_metadata.json', color:C.ydim, icon:CheckCircle }),
+                  h('span', { className:'px-1 text-xs', style:clr(C.muted) }, '+'),
+                  h(PipelineNode, { label:'_pipeline_state.json', sublabel:'per-advert tracking', color:C.bdim, icon:GitMerge })
+                )
+              ),
+              h('div', { className:'rounded-xl p-3 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Pipeline State File ', h(Tag, { color:'update' }, 'UPDATED')),
+                h('p', { className:'text-xs mb-2', style:clr(C.dim) },
+                  'The state file is ', h('strong', { style:clr(C.text) }, 'the system of record'), ' for advert progression through all stages. ',
+                  'Created here, updated by each subsequent stage.'
+                ),
+                h('div', { className:'flex items-center gap-2 text-xs mb-2', style:clr(C.dim) },
+                  h(ArrowRight, { className:'w-3 h-3' }),
+                  h('span', null, 'State machine: '),
+                  ['Extracted','Clipped','Identified','Refined','Clipped'].map((s,i,a) =>
+                    h('span', { key:s, className:'flex items-center gap-1' },
+                      h('span', { style:clr(C.muted) }, s),
+                      i < a.length-1 && h('span', { style:clr(C.muted) }, '\u2192')
+                    )
+                  )
+                )
+              ),
+              h('div', { className:'rounded-xl p-3 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Output Structure (per ad break)'),
+                h(CodeBlock, { language:'json' },
+`{
+  "ad_breaks": [{
+    "index": 0,
+    "programme_before": {"title": "ITV LUNCHTIME NEWS"},
+    "programme_after": {"title": "ITV LUNCHTIME NEWS"},
+    "start_time": "13:52:05",
+    "end_time": "13:55:35",
+    "adverts": [{
+      "unique_id": "BBHTCPT536010",
+      "advertiser": "Tesco stores",
+      "brand": "Tesco easter",
+      "category": "Food & drink",
+      "duration_seconds": 10,
+      "start_time": "13:52:05",
+      "position_in_break": "First"
+    }]
+  }],
+  "summary": {
+    "total_ad_breaks": 1,
+    "total_adverts": 7
+  }
+}`
+                )
+              ),
+              h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Key Parameters'),
+                h(ParamRow, { name:'--video', value:'path/to/video.mp4', note:'filename parsed for date/channel' }),
+                h(ParamRow, { name:'--csv-folder', value:'path/to/csv/', note:'defaults to video directory' }),
+                h(ParamRow, { name:'--output-dir', value:'path/to/output/', note:'where JSON + state files are written' }),
+                h(ParamRow, { name:'--before-secs', value:'10.0', note:'affects clip_offset in pipeline state' })
+              )
+            )
+          );
+
+          /* ══════════════ CLIP ══════════════ */
+          case 'clip': return h('div', { key:'clip', ...ani },
+            h('div', { className:'rounded-2xl p-5', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:Scissors, title:'Stage 2 \u2014 Clip Extraction', color:C.red }),
+              h('p', { className:'text-xs mb-4', style:clr(C.dim) },
+                'Reads the metadata JSON, iterates over each ad break, and uses FFmpeg to extract a clip centered on the ad break\'s start timecode. The extraction window is configurable. Supports optional burnt-in timecode or frame overlays.'
+              ),
+              h('div', { className:'rounded-xl p-4 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.red) }, 'Extraction Window'),
+                h('div', { className:'rounded-lg p-4', style:{background:'#111', border:'1px solid #222'} },
+                  h('div', { className:'flex items-end gap-px h-16' },
+                    [...Array(30)].map((_,i) => {
+                      const isBefore = i>=3 && i<6;
+                      const isBreak  = i>=6 && i<=24;
+                      const isAfter  = i>24 && i<=27;
+                      let col = '#333', ht = 'h-6';
+                      if (isBreak)  { col = C.red;   ht = '48px'; }
+                      else if (isBefore||isAfter) { col = '#550000'; ht = '32px'; }
+                      return h('div', { key:i, className:'flex-1 rounded-sm', style:{ height:ht, background:col } });
+                    })
+                  ),
+                  h('div', { className:'flex items-center gap-2 mt-2 text-xs' },
+                    h('div', { className:'flex items-center gap-1' }, h('div', { className:'w-2.5 h-2.5 rounded-sm', style:bg('#333') }), h('span', { style:clr(C.dim) }, 'Programme')),
+                    h('div', { className:'flex items-center gap-1' }, h('div', { className:'w-2.5 h-2.5 rounded-sm', style:bg('#550000') }), h('span', { style:clr(C.red) }, 'Buffer')),
+                    h('div', { className:'flex items-center gap-1' }, h('div', { className:'w-2.5 h-2.5 rounded-sm', style:bg(C.red) }), h('span', { style:clr(C.red) }, 'Ad break'))
+                  )
+                )
+              ),
+              h('div', { className:'rounded-xl p-4 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.red) }, 'FFmpeg Command'),
+                h(CodeBlock, {},
+`ffmpeg -ss <start - before_secs> \\
+  -i source_video.mp4 \\
+  -t <before_secs + after_secs> \\
+  -c copy \\
+  output_CLIP.mp4`
+                ),
+                h('p', { className:'text-xs mt-2', style:clr(C.muted) },
+                  'Uses stream copy (', h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.dim} }, '-c copy'), ') for fast lossless extraction.'
+                )
+              ),
+              h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Overlay Options'),
+                h('div', { className:'grid grid-cols-3 gap-2 mb-3' },
+                  h('div', { className:'rounded-lg p-2.5 text-center', style:{background:C.card, border:'1px solid #222'} }, h('p', { className:'text-xs font-bold', style:clr(C.blue) }, 'none'), h('p', { className:'text-xs', style:clr(C.muted) }, 'No overlay')),
+                  h('div', { className:'rounded-lg p-2.5 text-center', style:{background:C.card, border:'1px solid #222'} }, h('p', { className:'text-xs font-bold', style:clr(C.purple) }, 'timecode'), h('p', { className:'text-xs', style:clr(C.muted) }, 'HH:MM:SS.mmm')),
+                  h('div', { className:'rounded-lg p-2.5 text-center', style:{background:C.card, border:'1px solid #222'} }, h('p', { className:'text-xs font-bold', style:clr(C.purple) }, 'frame'), h('p', { className:'text-xs', style:clr(C.muted) }, 'Frame counter'))
+                ),
+                h(ParamRow, { name:'--json-file', value:'_metadata.json', note:'produced by Stage 1' }),
+                h(ParamRow, { name:'--before-secs', value:'60', note:'buffer before ad break' }),
+                h(ParamRow, { name:'--after-secs', value:'360', note:'buffer after ad break' }),
+                h(ParamRow, { name:'--overlay-type', value:'none', note:'none | timecode | frame' })
+              )
+            )
+          );
+
+          /* ══════════════ DETECT ══════════════ */
+          case 'detect': return h('div', { key:'detect', ...ani },
+            h('div', { className:'rounded-2xl p-5', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:Eye, title:'Stage 3 \u2014 AI Identification (1 FPS)', color:C.purple }),
+              h('p', { className:'text-xs mb-4', style:clr(C.dim) },
+                'The core detection stage. Sends the clip to a vision-language model (Qwen3.5 series via vLLM) along with expected advert metadata. The model identifies the last frame of each advert using brand logos, scene changes, and timing context.'
+              ),
+              /* Detection Modes */
+              h('div', { className:'grid grid-cols-1 md:grid-cols-3 gap-3 mb-4' },
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, borderLeft:`3px solid ${C.blue}`} },
+                  h('p', { className:'text-xs font-bold mb-1', style:clr(C.blue) }, 'Timecode Mode'),
+                  h('p', { className:'text-xs', style:clr(C.dim) }, 'Model reads burnt-in timecodes and reports HH:MM:SS.mmm'),
+                  h('code', { className:'mono text-xs mt-2 block', style:clr(C.muted) }, '--mode timecode (default)')
+                ),
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, borderLeft:`3px solid ${C.purple}`} },
+                  h('p', { className:'text-xs font-bold mb-1', style:clr(C.purple) }, 'Frame Mode'),
+                  h('p', { className:'text-xs', style:clr(C.dim) }, 'Model reads burnt-in frame numbers and reports 0-based index'),
+                  h('code', { className:'mono text-xs mt-2 block', style:clr(C.muted) }, '--mode frame')
+                ),
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, borderLeft:`3px solid ${C.pink}`} },
+                  h('p', { className:'text-xs font-bold mb-1', style:clr(C.pink) }, 'None Mode'),
+                  h('p', { className:'text-xs', style:clr(C.dim) }, 'Model infers timecode from frame sequence, reports MM:SS'),
+                  h('code', { className:'mono text-xs mt-2 block', style:clr(C.muted) }, '--mode none')
+                )
+              ),
+              /* Ensemble */
+              h('div', { className:'grid grid-cols-1 md:grid-cols-2 gap-3 mb-3' },
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.green) }, '\ud83d\udcca Ensemble Voting'),
+                  h('p', { className:'text-xs mb-2', style:clr(C.dim) },
+                    'N independent API calls per clip (default 5). Median timecode across ensemble members is selected as the final result.'
+                  ),
+                  h('div', { className:'flex gap-1 items-center mono text-xs mt-2' },
+                    h('span', { className:'px-1.5 py-0.5 rounded', style:{background:C.card, color:C.dim, border:'1px solid #222'} }, '52:14'),
+                    h('span', { className:'px-1.5 py-0.5 rounded', style:{background:C.card, color:C.dim, border:'1px solid #222'} }, '52:15'),
+                    h('span', { className:'px-1.5 py-0.5 rounded font-bold', style:{background:C.gdim, color:C.green, border:`1px solid ${C.green}44`, outline:`1px solid ${C.green}`} }, '52:15'),
+                    h('span', { className:'px-1.5 py-0.5 rounded', style:{background:C.card, color:C.dim, border:'1px solid #222'} }, '52:16'),
+                    h('span', { className:'text-xs ml-1', style:clr(C.muted) }, '\u2190 median'),
+                  )
+                ),
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, '\u26a1 Performance Flags ', h(Tag, { color:'new' }, 'NEW')),
+                  h('div', { className:'space-y-1.5' },
+                    h('div', { className:'flex items-start gap-2' },
+                      h('code', { className:'mono text-xs px-1 py-0.5 rounded shrink-0', style:{background:C.card, color:C.dim, border:'1px solid #222'} }, '--no-ensemble'),
+                      h('p', { className:'text-xs', style:clr(C.dim) }, 'Single call (fast, less accurate)')
+                    ),
+                    h('div', { className:'flex items-start gap-2' },
+                      h('code', { className:'mono text-xs px-1 py-0.5 rounded shrink-0', style:{background:C.card, color:C.dim, border:'1px solid #222'} }, '--no-thinking'),
+                      h('p', { className:'text-xs', style:clr(C.dim) }, 'Skip model reasoning (much faster)')
+                    ),
+                    h('div', { className:'flex items-start gap-2' },
+                      h('code', { className:'mono text-xs px-1 py-0.5 rounded shrink-0', style:{background:C.card, color:C.dim, border:'1px solid #222'} }, '--model'),
+                      h('p', { className:'text-xs', style:clr(C.dim) }, 'Override: Qwen3.5-4B/-9B/-27B-FP8')
+                    )
+                  )
+                )
+              ),
+              /* Pipeline flow */
+              h('div', { className:'rounded-xl p-4 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.purple) }, 'Detection Pipeline'),
+                h('div', { className:'space-y-2' },
+                  h('div', { className:'flex items-center gap-1 overflow-x-auto pb-1' },
+                    h(PipelineNode, { label:'Clip URL', sublabel:'via HTTP', color:C.card, icon:Play }),
+                    h(PipeArrow),
+                    h(PipelineNode, { label:'Load metadata', sublabel:'ad break N', color:C.card, icon:Database }),
+                    h(PipeArrow),
+                    h(PipelineNode, { label:'Build prompt', sublabel:'expected ads list', color:C.pdim, border:`1px solid ${C.purple}44`, icon:FileSpreadsheet }),
+                    h(PipeArrow),
+                    h(PipelineNode, { label:'VLM API', sublabel:'Qwen3.5-4B', color:C.pdim })
+                  ),
+                  h(DownArrow),
+                  h('div', { className:'flex items-center gap-1 overflow-x-auto pb-1' },
+                    h('div', { className:'rounded-lg p-2 text-center min-w-max', style:{background:C.pdim, border:`1px solid ${C.purple}44`} },
+                      h('p', { className:'text-xs font-bold', style:clr(C.text) }, 'N\u00d7 Ensemble Calls'),
+                      h('div', { className:'flex gap-0.5 mt-1 justify-center' },
+                        [1,2,3,4,5].map(i => h('div', { key:i, className:'w-5 h-5 rounded text-xs flex items-center justify-center font-bold', style:{background:C.purple+'44', color:C.purple} }, i))
+                      )
+                    ),
+                    h(PipeArrow),
+                    h(PipelineNode, { label:'Parse responses', sublabel:'per-advert TCs', color:C.card, icon:Search }),
+                    h(PipeArrow),
+                    h(PipelineNode, { label:'Median voting', sublabel:'per advert', color:C.pdim, border:`1px solid ${C.blue}44`, icon:GitMerge }),
+                    h(PipeArrow),
+                    h(PipelineNode, { label:'Results XML', sublabel:'+ state update', color:C.pdim })
+                  )
+                )
+              ),
+              /* Output */
+              h('div', { className:'rounded-xl p-3 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Output Structure'),
+                h(CodeBlock, { language:'json' },
+`{
+  "success": true,
+  "adverts": [{
+    "timecode": "13:52:05",
+    "advert_id": "BBHTCPT536010",
+    "brand": "Tesco",
+    "duration_seconds": 10,
+    "description": "Tesco logo in final frame"
+  }],
+  "total_found": 1,
+  "total_expected": 1,
+  "ensemble": {
+    "total_responses": 5,
+    "valid_responses": 5,
+    "voting_method": "median_timecode_majority_brand"
+  }
+}`
+                )
+              ),
+              h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Key Parameters'),
+                h(ParamRow, { name:'--video', value:'http://server/clip.mp4', note:'clip URL via HTTP' }),
+                h(ParamRow, { name:'--metadata-file', value:'_metadata.json', note:'from Stage 1' }),
+                h(ParamRow, { name:'--ad-break-index', value:'1', note:'1-based (fixed from initial 0-based)' }),
+                h(ParamRow, { name:'--ensemble-size', value:'5', note:'N API calls for median voting' }),
+                h(ParamRow, { name:'--fps', value:'1.0', note:'vLLM frame sampling rate' }),
+                h(ParamRow, { name:'--verbose', value:'', note:'real-time step progress' })
+              )
+            )
+          );
+
+          /* ══════════════ REFINE ══════════════ */
+          case 'refine': return h('div', { key:'refine', ...ani },
+            h('div', { className:'rounded-2xl p-5', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:Search, title:'Stage 4 \u2014 Frame Refinement (25 FPS)', color:C.green }),
+              h('div', { className:'flex items-center gap-2 mb-3' },
+                h(Tag, { color:'new' }, 'NEW'),
+                h('p', { className:'text-xs', style:clr(C.dim) }, 'Introduced after initial release. Converts coarse 1-second precision to millisecond accuracy.')
+              ),
+              h('p', { className:'text-xs mb-4', style:clr(C.dim) },
+                'For each advert from the 1 FPS stage, extracts a 3-second clip centred on the expected end timecode, then analyses it at ',
+                h('strong', { style:clr(C.text) }, 'full frame rate'), ' (25 FPS PAL / 24 FPS NTSC). Ensemble of 3 calls vote on the precise last frame, producing HH:MM:SS.mmm output.'
+              ),
+              /* How it works */
+              h('div', { className:'grid grid-cols-1 md:grid-cols-2 gap-3 mb-4' },
+                h('div', { className:'rounded-xl p-3', style:{background:C.gdim, border:`1px solid ${C.green}22`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.green) }, '\ud83c\udfaf Process'),
+                  h('ul', { className:'text-xs space-y-1.5 ml-3 list-disc', style:clr(C.dim) },
+                    h('li', null, 'Extract 3-second clip centred on coarse timecode (1.5s before/after)'),
+                    h('li', null, 'Send to VLLM at ', h('strong', { style:clr(C.text) }, '25 FPS'), ' \u2014 ', h('strong', { style:clr(C.text) }, '75 frames'), ' per advert'),
+                    h('li', null, 'Ensemble of ', h('strong', { style:clr(C.text) }, '3 calls'), ' vote on precise last frame'),
+                    h('li', null, 'Output: ', h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.green} }, 'HH:MM:SS.mmm'), ' floor-snapped to 1/fps boundary'),
+                    h('li', null, 'Updates pipeline state with ', h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.green} }, 'adjusted_start_broadcast'))
+                  )
+                ),
+                h('div', { className:'rounded-xl p-3', style:{background:C.gdim, border:`1px solid ${C.green}22`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.green) }, '\u2699\ufe0f Configuration'),
+                  h('ul', { className:'text-xs space-y-1.5 ml-3 list-disc', style:clr(C.dim) },
+                    h('li', null, 'Default: 25 FPS (PAL broadcast sources)'),
+                    h('li', null, h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.green} }, '--refine-fps 24.0'), ' for NTSC'),
+                    h('li', null, h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.green} }, '--ensemble-filter mad'), ' for outlier rejection'),
+                    h('li', null, h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.green} }, '--ensemble-size'), ' adjustable from 3 (default)'),
+                    h('li', null, h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.green} }, '--no-thinking'), ' for speed')
+                  )
+                )
+              ),
+              /* MAD Filter */
+              h('div', { className:'rounded-xl p-3 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'MAD-Based Outlier Filter ', h(Tag, { color:'new' }, 'NEW')),
+                h('p', { className:'text-xs mb-2', style:clr(C.dim) },
+                  'When ', h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.dim} }, '--ensemble-filter mad'), ' is enabled, the system applies Median Absolute Deviation rejection before the final median:'
+                ),
+                h('ol', { className:'text-xs space-y-1 ml-4 list-decimal', style:clr(C.dim) },
+                  h('li', null, 'Compute median of all valid votes'),
+                  h('li', null, 'Compute absolute deviations from the median'),
+                  h('li', null, 'Compute MAD (median of absolute deviations)'),
+                  h('li', null, 'Discard votes where deviation > threshold \u00d7 MAD'),
+                  h('li', null, 'Median of remaining votes')
+                ),
+                h('div', { className:'flex gap-2 mt-2 text-xs' },
+                  h('div', { className:'rounded-lg px-2 py-1', style:{background:C.card, border:'1px solid #222'} }, h('span', { style:clr(C.dim) }, 'Threshold 2.0: '), h('span', { style:clr(C.yellow) }, 'Aggressive')),
+                  h('div', { className:'rounded-lg px-2 py-1', style:{background:C.card, border:'1px solid #222'} }, h('span', { style:clr(C.dim) }, 'Threshold 3.0: '), h('span', { style:clr(C.green) }, 'Balanced (default)')),
+                  h('div', { className:'rounded-lg px-2 py-1', style:{background:C.card, border:'1px solid #222'} }, h('span', { style:clr(C.dim) }, 'Threshold 5.0+: '), h('span', { style:clr(C.blue) }, 'Conservative'))
+                )
+              ),
+              /* Comparison table */
+              h('div', { className:'rounded-xl p-3 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Primary Detection vs Refinement'),
+                h('div', { className:'overflow-x-auto' },
+                  h('table', { className:'w-full text-xs text-left' },
+                    h('thead', null,
+                      h('tr', { style:{borderBottom:`1px solid ${C.bdr}`} },
+                        h('th', { className:'py-1.5 pr-3 font-semibold', style:clr(C.muted) }, 'Aspect'),
+                        h('th', { className:'py-1.5 pr-3 font-semibold', style:clr(C.purple) }, 'Stage 3 \u2014 1 FPS'),
+                        h('th', { className:'py-1.5 font-semibold', style:clr(C.green) }, 'Stage 4 \u2014 25 FPS'))
+                    ),
+                    h('tbody', { style:clr(C.dim) },
+                      [['Frame rate','1 FPS','25 FPS (configurable)'],
+                       ['Clip duration','Full ad break (6 min)','3 seconds per advert'],
+                       ['Ensemble size','5 calls','3 calls'],
+                       ['Context','Full advert sequence','Single advert with brand info'],
+                       ['Output','MM:SS timecode','HH:MM:SS.mmm (floor-snapped)'],
+                       ['Accuracy','\u00b11 second','\u00b11/fps (~40ms at 25 FPS)'],
+                      ].map(([a,b,c], i) =>
+                        h('tr', { key:i, style:{borderBottom:`1px solid #111`} },
+                          h('td', { className:'py-1 pr-3 font-semibold', style:clr(C.muted) }, a),
+                          h('td', { className:'py-1 pr-3', style:clr(C.purple+'99') }, b),
+                          h('td', { className:'py-1', style:clr(C.green+'99') }, c))
+                      ))
+                  )
+                )
+              ),
+              /* Output */
+              h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Refined Output'),
+                h(CodeBlock, { language:'json' },
+`<ad_break>
+  <advert>
+    <unique_id>BBHTCPT536010</unique_id>
+    <brand>Tesco</brand>
+    <advertiser>Tesco stores</advertiser>
+    <category>retail</category>
+    <duration_seconds>20</duration_seconds>
+    <last_timecode>09:30</last_timecode>             <!-- coarse 1-FPS -->
+    <refined_timecode>00:09:31.400</refined_timecode> <!-- precise 25-FPS -->
+    <refined_clip_frame>43</refined_clip_frame>
+    <refinement_status>success</refinement_status>
+  </advert>
+</ad_break>`
+                )
+              )
+            )
+          );
+
+          /* ══════════════ EXTRACT ══════════════ */
+          case 'extract': return h('div', { key:'extract', ...ani },
+            h('div', { className:'rounded-2xl p-5', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:FileOutput, title:'Stage 5 \u2014 Advert Clip Extraction', color:C.pink }),
+              h('div', { className:'flex items-center gap-2 mb-3' },
+                h(Tag, { color:'new' }, 'NEW'),
+                h('p', { className:'text-xs', style:clr(C.dim) }, 'Lossless extraction of individual advert clips from the full broadcast video.')
+              ),
+              h('p', { className:'text-xs mb-4', style:clr(C.dim) },
+                'Uses the refined XML (or coarse XML if refinement unavailable) to extract lossless H.264 clips of each individual advert. The ',
+                h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.dim} }, 'adjusted_start_broadcast'), ' from the pipeline state file determines the precise FFmpeg seek offset.'
+              ),
+              h('div', { className:'rounded-xl p-4 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.pink) }, 'Timecode Resolution Priority'),
+                h('div', { className:'space-y-2' },
+                  h('div', { className:'flex items-center gap-2 rounded-lg p-2', style:{background:C.card, border:'1px solid #222'} },
+                    h('span', { className:'text-xs font-bold px-1.5 py-0.5 rounded', style:{background:C.gdim, color:C.green, border:`1px solid ${C.green}44`} }, '1st'),
+                    h('span', { className:'text-xs font-bold', style:clr(C.green) }, 'Pipeline state file'),
+                    h('span', { className:'text-xs', style:clr(C.muted) }, '\u2014 reads adjusted_start_broadcast directly (ms precision)')
+                  ),
+                  h('div', { className:'flex items-center gap-2 rounded-lg p-2', style:{background:C.card, border:'1px solid #222'} },
+                    h('span', { className:'text-xs font-bold px-1.5 py-0.5 rounded', style:{background:C.bdim, color:C.blue, border:`1px solid ${C.blue}44`} }, '2nd'),
+                    h('span', { className:'text-xs font-bold', style:clr(C.blue) }, 'Refined XML'),
+                    h('span', { className:'text-xs', style:clr(C.muted) }, '\u2014 refined_timecode + clip_offset')
+                  ),
+                  h('div', { className:'flex items-center gap-2 rounded-lg p-2', style:{background:C.card, border:'1px solid #222'} },
+                    h('span', { className:'text-xs font-bold px-1.5 py-0.5 rounded', style:{background:C.ydim, color:C.yellow, border:`1px solid ${C.yellow}44`} }, '3rd'),
+                    h('span', { className:'text-xs font-bold', style:clr(C.yellow) }, 'Coarse XML'),
+                    h('span', { className:'text-xs', style:clr(C.muted) }, '\u2014 last_timecode from 1 FPS (fallback)')
+                  )
+                )
+              ),
+              h('div', { className:'grid grid-cols-1 md:grid-cols-2 gap-3 mb-3' },
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, '\ud83d\udd27 Options'),
+                  h(ParamRow, { name:'--xml-file', value:'_refined.xml', note:'supports both coarse/refined' }),
+                  h(ParamRow, { name:'--video-url', value:'URL or path', note:'full broadcast video' }),
+                  h(ParamRow, { name:'--state-file', value:'_pipeline_state.json', note:'auto seek offset' }),
+                  h(ParamRow, { name:'--clip-offset', value:'0.0', note:'manual broadcast offset' })
+                ),
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, '\u2702\ufe0f Trim / Pad'),
+                  h(ParamRow, { name:'--trim', value:'0.5', note:'remove seconds from both ends' }),
+                  h(ParamRow, { name:'--pad', value:'0.5', note:'add seconds to both ends' }),
+                  h(ParamRow, { name:'--index', value:'N', note:'extract single advert (1-based)' }),
+                  h(ParamRow, { name:'--output-dir', value:'clips/', note:'per-advert .mp4 files' })
+                )
+              ),
+              h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Output Filename Format'),
+                h(CodeBlock, {},
+`{unique_id}_{category}_{brand}.mp4
+  e.g. BBHTCPT536010_retail_Tesco.mp4`),
+                h('p', { className:'text-xs mt-2', style:clr(C.muted) }, 'Lossless H.264 \u2014 stream copy from source, no re-encoding.')
+              )
+            )
+          );
+
+          /* ══════════════ AUTOMATION ══════════════ */
+          case 'automation': return h('div', { key:'automation', ...ani },
+            h('div', { className:'rounded-2xl p-5', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:FolderOpen, title:'Full Automation Pipeline', color:C.blue }),
+              h('p', { className:'text-xs mb-4', style:clr(C.dim) },
+                h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.dim} }, 'advert-identifier-pipeline'),
+                ' chains all 5 stages automatically. Point it at folders of videos and CSV data; it processes everything end-to-end with pipeline state tracking.'
+              ),
+              h('div', { className:'rounded-xl p-4 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.blue) }, 'Automation Flow'),
+                h('div', { className:'space-y-1' },
+                  [
+                    { step:'1', text:'Scan input folder for matching video filenames', color:C.yellow },
+                    { step:'2', text:'Run metadata extraction \u2192 JSON + pipeline state', color:C.yellow },
+                    { step:'3', text:'Extract clips with FFmpeg', color:C.red },
+                    { step:'4', text:'Run 1 FPS AI identification with ensemble (updates state)', color:C.purple },
+                    { step:'5', text:'Run 25 FPS frame refinement (updates state)', color:C.green },
+                    { step:'6', text:'Extract individual advert clips using refined offsets', color:C.pink },
+                    { step:'7', text:'Generate summary report', color:C.dim },
+                  ].map((item, i) =>
+                    h('div', { key:i, className:'flex items-start gap-2 py-1.5', style:{borderBottom:`1px solid ${C.bdr}`} },
+                      h('span', { className:'text-xs font-bold px-1.5 py-0.5 rounded shrink-0', style:{background:C.card, color:C.dim, border:'1px solid #222'} }, item.step),
+                      h('p', { className:'text-xs', style:clr(item.color) }, item.text)
+                    )
+                  )
+                )
+              ),
+              h('div', { className:'rounded-xl p-3 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Example'),
+                h(CodeBlock, {},
+`advert-identifier-pipeline \\
+  --input-folder /path/to/videos \\
+  --csv-folder /path/to/csv/files \\
+  --before-secs 60 \\
+  --after-secs 360 \\
+  --video-server-url http://your-server:1100`
+                )
+              ),
+              /* Pipeline state detail */
+              h('div', { className:'rounded-xl p-3 mb-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Pipeline State File (System of Record) ', h(Tag, { color:'update' }, 'UPDATED')),
+                h(CodeBlock, { language:'json' },
+`{
+  "pipeline_version": 1,
+  "video_info": {
+    "filepath": "video/2024-03-26_ITV1HD_13:30:00.mp4",
+    "start_time": "13:30:00"
+  },
+  "ad_breaks": [{
+    "index": 1,
+    "start_time": "13:52:05",
+    "clip_offset": 1295.0,
+    "adverts": [{
+      "unique_id": "BBHTCPT536010",
+      "brand": "Tesco",
+      "status": "refined",
+      "coarse_1fps": {
+        "last_timecode": "22:05",
+        "last_seconds_clip": 1325.0
+      },
+      "refined_25fps": {
+        "last_timecode": "00:22:05.080",
+        "last_seconds_clip": 1325.08,
+        "clip_frame": 42,
+        "last_seconds_broadcast": 2620.08,
+        "adjusted_start_broadcast": 2610.08
+      }
+    }]
+  }]
+}`
+                ),
+                h('p', { className:'text-xs mt-2', style:clr(C.muted) },
+                  h('strong', { style:clr(C.dim) }, 'adjusted_start_broadcast'), ' is the final FFmpeg seek offset for clip extraction. ',
+                  'Computed as: ', h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.muted} }, 'last_seconds_broadcast - scheduled_duration_seconds')
+                )
+              ),
+              /* Coordinate systems */
+              h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Coordinate Systems'),
+                h('p', { className:'text-xs mb-2', style:clr(C.dim) }, 'The pipeline operates in three coordinate frames:'),
+                h('div', { className:'overflow-x-auto' },
+                  h('table', { className:'w-full text-xs text-left' },
+                    h('thead', null,
+                      h('tr', { style:{borderBottom:`1px solid ${C.bdr}`} },
+                        h('th', { className:'py-1 pr-3 font-semibold', style:clr(C.muted) }, 'Frame'),
+                        h('th', { className:'py-1 pr-3 font-semibold', style:clr(C.muted) }, 'Origin'),
+                        h('th', { className:'py-1 font-semibold', style:clr(C.muted) }, 'Used by'))
+                    ),
+                    h('tbody', { style:clr(C.dim) },
+                      [['Broadcast-absolute','Start of full broadcast .mp4','FFmpeg -ss seeks'],
+                       ['Clip-relative','Start of 6-minute extracted clip','1 FPS LLM, 25 FPS refinement'],
+                       ['Time-of-day','Wall clock HH:MM:SS','CSV metadata'],
+                      ].map(([a,b,c], i) =>
+                        h('tr', { key:i, style:{borderBottom:`1px solid #111`} },
+                          h('td', { className:'py-1 pr-3 font-semibold', style:clr(C.muted) }, a),
+                          h('td', { className:'py-1 pr-3', style:clr(C.dim) }, b),
+                          h('td', { className:'py-1', style:clr(C.muted) }, c))
+                      ))
+                  )
+                ),
+                h('p', { className:'text-xs mt-2', style:clr(C.muted) },
+                  'Bridged by ', h('code', { className:'mono px-1 rounded', style:{background:C.card, color:C.muted} }, 'clip_offset = (break_start_tod - video_start_tod) - before_secs'),
+                  '.'
+                )
+              )
+            ),
+            /* Requirements */
+            h('div', { className:'rounded-2xl p-5 mt-4', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+              h(SectionHeader, { icon:Settings, title:'Requirements', color:C.muted }),
+              h('div', { className:'grid grid-cols-1 md:grid-cols-2 gap-3' },
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Runtime'),
+                  h(ParamRow, { name:'Python', value:'3.10+' }),
+                  h(ParamRow, { name:'FFmpeg', value:'installed in PATH' }),
+                  h(ParamRow, { name:'vLLM', value:'server with VLM loaded' }),
+                  h(ParamRow, { name:'Model', value:'Qwen3.5-4B recommended' })
+                ),
+                h('div', { className:'rounded-xl p-3', style:{background:C.bg, border:`1px solid ${C.bdr}`} },
+                  h('p', { className:'text-xs font-bold mb-2', style:clr(C.dim) }, 'Model Options'),
+                  h('div', { className:'space-y-1.5' },
+                    h('div', { className:'flex items-center gap-2' }, h('span', { className:'text-xs font-bold', style:clr(C.blue) }, 'Qwen3.5-4B'), h('span', { className:'text-xs', style:clr(C.muted) }, '\u2014 60s video, ~70% VRAM, fast')),
+                    h('div', { className:'flex items-center gap-2' }, h('span', { className:'text-xs font-bold', style:clr(C.purple) }, 'Qwen3.5-9B'), h('span', { className:'text-xs', style:clr(C.muted) }, '\u2014 medium video, ~90% VRAM')),
+                    h('div', { className:'flex items-center gap-2' }, h('span', { className:'text-xs font-bold', style:clr(C.yellow) }, 'Qwen3.5-27B-FP8'), h('span', { className:'text-xs', style:clr(C.muted) }, '\u2014 text-only, ~50% VRAM, very fast'))
+                  )
+                )
+              )
+            ),
+            /* Footer */
+            h('div', { className:'text-center mt-6 mb-4' },
+              h('p', { className:'text-xs', style:clr(C.muted) }, 'Qwen3.5 \u00b7 FFmpeg \u00b7 vLLM Serve API \u00b7 Built at BFI National Archive'),
+              h('p', { className:'text-xs', style:clr(C.muted) }, 'v2 \u2014 Updated with Stages 4 & 5: 25 FPS refinement + advert clip extraction')
+            )
+          );
+        }
+      };
+
+      return h('div', { className:'min-h-screen p-4 md:p-8', style:bg(C.bg) },
+        h('div', { className:'max-w-4xl mx-auto' },
+          /* Header */
+          h('div', { className:'text-center mb-6' },
+            h('div', { className:'inline-flex items-center gap-2 px-4 py-2 rounded text-xs font-bold mb-3 tracking-wide',
+                       style:{background:C.gdim, color:C.green, border:`1px solid ${C.green}44`} },
+              h(Cpu, { className:'w-3.5 h-3.5' }), 'AD BREAK IDENTIFIER \u2014 TECHNICAL ARCHITECTURE v2'
+            ),
+            h('h1', { className:'text-2xl md:text-3xl font-bold mb-2' }, 'Detection Pipeline Architecture'),
+            h('p', { className:'text-sm max-w-2xl mx-auto', style:clr(C.dim) },
+              'Five-stage pipeline: CSV metadata extraction \u2192 FFmpeg clip extraction \u2192 1 FPS VLM detection with ensemble voting \u2192 25 FPS frame refinement \u2192 lossless advert clip extraction.'
+            )
+          ),
+
+          /* Tabs */
+          h('div', { className:'flex gap-1 mb-4 rounded-xl p-1 overflow-x-auto', style:{background:C.card, border:`1px solid ${C.bdr}`} },
+            TABS.map(tab =>
+              h('button', {
+                key: tab.id,
+                onClick: () => setActiveTab(tab.id),
+                className: 'tab-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all',
+                style: activeTab === tab.id
+                  ? { background: C.blue, color: '#000' }
+                  : { color: C.muted }
+              },
+                h(tab.icon, { className:'w-3.5 h-3.5' }),
+                tab.label
+              )
+            )
+          ),
+
+          /* Tab Content */
+          renderTab(activeTab)
+        )
+      );
+    }
+
+    function CommandCard({ name, desc, args, color, tag }) {
+      return h('div', { className:'rounded-xl p-3 card-hover', style:{background:C.card, borderLeft:`3px solid ${color||C.blue}`, borderTop:'1px solid '+C.bdr, borderRight:'1px solid '+C.bdr, borderBottom:'1px solid '+C.bdr} },
+        h('div', { className:'flex items-center gap-2 mb-1' },
+          h('code', { className:'mono text-xs font-bold', style:clr(C.text) }, name),
+          tag && h(Tag, { color:'new' }, tag)
+        ),
+        h('p', { className:'text-xs mb-2', style:clr(C.dim) }, desc),
+        h('div', { className:'flex flex-wrap gap-1' },
+          args.map((a,i) =>
+            h('span', { key:i, className:'mono text-xs px-1.5 py-0.5 rounded', style:{background:C.bg, color:C.dim, border:'1px solid #222'} }, a)
+          )
+        )
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+  </script>
+</body>
+</html>
