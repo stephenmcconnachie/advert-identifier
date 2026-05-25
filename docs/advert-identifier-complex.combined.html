@@ -293,9 +293,9 @@
                 ),
                 h('div', { className:'flex items-center gap-2 text-xs mb-2', style:{color:s('dim')} },
                   h(ArrowRight, { className:'w-3 h-3' }), h('span', null, 'State machine: '),
-                  ['Extracted','Clipped','Identified','Refined','Clipped'].map((s,i,a) =>
-                    h('span', { key:s, className:'flex items-center gap-1' },
-                      h('span', { style:{color:s('muted')} }, s),
+                  ['Extracted','Clipped','Identified','Refined','Clipped'].map((st,i,a) =>
+                    h('span', { key:st, className:'flex items-center gap-1' },
+                      h('span', { style:{color:s('muted')} }, st),
                       i<a.length-1 && h('span', { style:{color:s('muted')} }, '\u2192'))
                   )
                 )
